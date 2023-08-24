@@ -49,6 +49,7 @@ OpenLane is a open source software based on SKY130PDK library, it automates synt
 
     **FINAL GDS VIEW**
 
-    ![Screenshot 2023-08-24 131424](https://github.com/NiharGowdaS/ASIC-Design-Flow-using-Openlane/assets/77974814/41bbde11-2825-4fbd-a4f0-c8a02f3f61fd)
+   ![Screenshot 2023-08-24 131424](https://github.com/NiharGowdaS/ASIC-Design-Flow-using-Openlane/assets/77974814/d93fd03b-390c-4378-9d77-96396d0c6d02)
+
 
 
