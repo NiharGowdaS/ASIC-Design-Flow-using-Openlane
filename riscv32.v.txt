@@ -1,0 +1,643 @@
+/*Single cycle  RISC-V processor with all types of instruction formats
+R-type, I -type, S - type,B-type, U-type, J-type*/
+`timescale 1ns / 1ps
+
+module Top(
+    input clk,
+    input reset, 
+    output reg [31:0]PC_out,
+    output reg [31:0]instruction_out
+);
+
+wire [31:0]memwrite_data;
+wire [31:0]memread_data; 
+
+wire [31:0]instruction;
+wire [31:0] PC;
+ wire mem_write;
+
+wire [31:0] alu_result;
+       Instruction_Memory  INSTR_MEM(reset,PC, instruction);
+
+core RISCV(clk, reset, instruction, PC, alu_result, mem_write,memread_data,memwrite_data  );
+   
+       Data_Memory  DATA_MEMORY(reset,clk,alu_result, memwrite_data, memread_data,mem_write);
+
+always @(*)begin
+ PC_out = PC;
+ instruction_out = instruction;
+end
+
+endmodule
+ 
+
+//RV32I based processor with all instruction format is implemented with datapath and control path modules
+
+
+module core(clk, reset, instruction, PC, alu_result, mem_write,mem_read_data,mem_write_data  );
+    input clk;
+    input reset;
+    input [31:0] instruction;
+    output [31:0]PC;
+    output [31:0]alu_result;
+    output mem_write;
+    input [31:0] mem_read_data;
+    output [31:0] mem_write_data;
+    
+ wire [3:0]alu_control;
+ wire AluSrc;
+ wire mem_write;
+ wire mem_read;
+ wire mem_reg ;   
+ wire branch; 
+ wire isJump;
+ wire reg_write;
+     
+   
+Control_path CONTROL_MODULE(instruction[31:25], instruction[14:12],instruction[6:0], alu_control, reg_write, AluSrc,mem_write,mem_reg,branch,isJump);
+
+
+Datapath DATAPATH_MODULE(clk, reset,instruction, alu_control, reg_write, branch, AluSrc, alu_result, PC, mem_reg, mem_read_data,mem_write_data,isJump);
+    
+endmodule
+
+//External memory of the processor to store values
+module Data_Memory
+(reset,clk,mem_address, mem_write_data, mem_read_data,mem_write);
+    input reset;
+    input clk;
+    input [31:0]mem_address;
+    input [31:0] mem_write_data;
+    output reg [31:0] mem_read_data=0;
+    input  mem_write;
+   // input mem_read ;
+   
+    
+    reg [31:0] mem_data [31:0];
+    
+//    always @(posedge reset)
+//    begin
+     
+//         mem_data[0] = 32'h0;
+//         mem_data[1] = 32'h1;
+//         mem_data[2] = 32'h2;
+//         mem_data[3] = 32'h3;
+//         mem_data[4] = 32'h4;
+//         mem_data[5] = 32'h5;
+//         mem_data[6] = 32'h6;
+//         mem_data[7] = 32'h7;
+//         mem_data[8] = 32'h8;
+//         mem_data[9] = 32'h9;
+//         mem_data[10] = 32'h10;
+//         mem_data[11] = 32'h11;
+//         mem_data[12] = 32'h12;
+//         mem_data[13] = 32'h13;
+//         mem_data[14] = 32'h14;
+//         mem_data[15] = 32'h15;
+//         mem_data[16] = 32'h16;
+//         mem_data[17] = 32'h17;
+//         mem_data[18] = 32'h18;
+//         mem_data[19] = 32'h19;
+//         mem_data[20] = 32'h20;
+//         mem_data[21] = 32'h21;
+//         mem_data[22] = 32'h22;
+//         mem_data[23] = 32'h23;
+//         mem_data[24] = 32'h24;
+//         mem_data[25] = 32'h25;
+//		 mem_data[26] = 32'h26;
+//         mem_data[27] = 32'h27;
+//         mem_data[28] = 32'h28;
+//         mem_data[29] = 32'h29;
+//         mem_data[30] = 32'h30;
+//         mem_data[31] = 32'h31;
+//         end
+    
+    always @(negedge clk)
+    begin
+    if(mem_write==1'b1)
+     mem_data[mem_address] <= mem_write_data ;
+    end
+     
+  always@(*)
+    begin      
+        mem_read_data=mem_data[mem_address];
+      end
+endmodule
+
+module Control_path(funct7,funct3,opcode,alu_control,regwrite_control,
+AluSrc,mem_write,mem_reg,branch,isJump);
+ input [6:0] funct7;
+ input [2:0] funct3;
+ input [6:0] opcode;
+ output reg [3:0] alu_control;
+ output reg regwrite_control;
+ output reg AluSrc;
+ output reg mem_write;
+// output reg mem_read;
+ output reg mem_reg;
+ output reg isJump;
+ output reg branch;
+    
+    always @(funct3 , funct7 , opcode)
+    begin
+        case(opcode)
+         7'b0110011: begin // R-type instructions                        
+            //mem_read = 0;
+            mem_reg = 0;
+            mem_write = 0;
+            AluSrc = 0;
+            regwrite_control = 1;
+            isJump = 0;
+            branch = 0;
+            
+        
+            case (funct3)
+                0: begin
+                    if(funct7 == 0)
+                    alu_control = 4'b0010; // ADD
+                    else if(funct7 == 32)
+                    alu_control = 4'b0100;
+                    else 
+                    alu_control = 4'bzzzz; // SUB
+                end
+                6: alu_control = 4'b0001; // OR
+                7: alu_control = 4'b0000; // AND
+                1: alu_control = 4'b0011; // SLL
+                5: alu_control = 4'b0101; // SRL
+				2: alu_control = 4'b0110; // MUL
+				4: alu_control = 4'b0111; // XOR
+				default:alu_control = 4'bzzzz;
+            endcase
+            end
+            
+                  7'b0010011:  // Arithmetic Immediate Instructions
+           begin
+            AluSrc = 1;
+          //  mem_read = 0;
+            mem_reg = 0;
+            mem_write = 0;
+            regwrite_control = 1;
+            isJump = 0;
+             branch = 0;
+            
+                 case (funct3)
+                 0: alu_control = 4'b0010; //ADDI
+                 1: alu_control = 4'b0011; //SLLI
+                 4: alu_control = 4'b0111; //XORI
+                 5: begin
+                    if(funct7 == 7'b0000000)
+                    alu_control = 4'b0010; // Shift Right Immediate
+                    else if(funct7 == 16)
+                    alu_control = 4'b1001; //Shift Right Arithmetic Immediate
+                    end 
+                 6: alu_control = 4'b0001; //ORI
+                 7: alu_control = 4'b0000; //ANDI
+                 default:alu_control = 4'b0000;
+                 endcase
+                 end
+                 
+                 
+                 7'b0000011:  // Load word Instructions
+           begin
+           // mem_read = 1;
+            mem_reg = 1;
+            mem_write = 0;
+            AluSrc = 1;
+            regwrite_control = 1;
+            isJump = 0;
+             branch = 0;
+            alu_control = 4'b0010;
+            
+            end
+                 
+                 7'b0100011: // Store word Instructions
+           begin
+            mem_write = 1;
+         //   mem_read = 0;
+            AluSrc = 1;
+            mem_reg = 0;
+            regwrite_control = 0;
+            isJump = 0;
+             branch = 0;
+            alu_control = 4'b0010;
+                
+                 end
+                 
+                7'b1101111:  // Jump and link Instructions
+           begin
+            mem_write = 0;
+//            mem_read = 0;
+            AluSrc = 0;
+            regwrite_control = 0;
+            isJump = 1;
+             branch = 0;
+             mem_reg = 0;
+            end
+            
+                7'b1100111: // Branch Instructions
+           begin
+            mem_write = 0;
+        //    mem_read = 0;
+        mem_reg = 0;
+            AluSrc = 0;
+            regwrite_control = 0;
+            isJump = 0;
+             branch = 1;
+             alu_control = 4'b0100; // SUB
+            end
+            
+               7'b0110111: // Lower upper immediate
+           begin
+            mem_write = 0;
+        //    mem_read = 0;
+            AluSrc = 0;
+            regwrite_control = 1;
+            isJump = 0;
+             branch = 0;
+             mem_reg = 0;
+            end 
+           
+            
+            default:begin
+            alu_control = 4'b0000;
+             mem_reg = 0;
+            mem_write = 0;
+            AluSrc = 0;
+            regwrite_control = 1;
+            isJump = 0;
+            branch = 0;
+            end
+          endcase
+            end
+            
+            
+              
+            
+                                                                                                                                                                          
+endmodule
+
+
+
+module Datapath(clk, reset,instruction, alu_control, reg_write, branch, AluSrc, alu_result0, PC, mem_reg, mem_read_data, reg_read_rs2,isJump);
+    
+    input clk;
+    input reset;
+    input [3:0]alu_control;
+    input branch ;
+    input [31:0] instruction ;
+    input reg_write;
+    output[31:0]PC;
+    input AluSrc;
+    output reg [31:0] alu_result0;
+    input mem_reg;
+    input [31:0] mem_read_data;
+    output [31:0] reg_read_rs2;
+    input isJump;
+    wire [31:0]immext;
+    
+    
+
+wire zero_flag;
+//wire [11:0] branch_offset;
+wire [31:0] Prg_Cntr;
+wire [31:0] alu_result;
+wire PCSrc;    
+     Program_Counter PrgCtr(clk, reset,Prg_Cntr, PCSrc, immext,isJump);
+//assign branch_offset = {instruction[12],instruction[7],instruction[30:25],instruction[11:8]};
+assign PCSrc = zero_flag&branch;
+assign PC = Prg_Cntr;
+always @(*)
+alu_result0 = alu_result;
+reg [31:0]  write_data_2_reg;  
+//wire [31:0]  write_data_2_reg_0; 
+wire [31:0] reg_read_rs11; 
+     Registers REG(clk,write_data_2_reg,instruction[19:15], instruction[24:20], instruction[11:7], reg_write,reset, reg_read_rs11, reg_read_rs2);
+
+    
+ wire [31:0] read_data2;   
+     ALU alu(reg_read_rs11, read_data2, alu_control, alu_result, zero_flag);
+   
+     Extend  EXT(instruction, immext);
+ assign read_data2 = (AluSrc==1'b1)?immext : reg_read_rs2;
+ 
+// assign write_data_2_reg =  (mem_reg == 1'b1) ? mem_read_data:alu_result;
+ 
+// assign write_data_2_reg_0 = (instruction[2] == 1'b1)?immext: write_data_2_reg;
+
+always @(*)
+begin
+if(mem_reg==1'b1)
+write_data_2_reg = mem_read_data; //for S-type instruction
+else if(instruction[3:2] == 2'b11) //for jal (J-type instruction)
+write_data_2_reg = Prg_Cntr + 4;
+else if(instruction[3:2] == 2'b01)
+write_data_2_reg = immext; //for load upper immediate
+else
+write_data_2_reg = alu_result;//for R-type and I type instructions
+end
+ 
+     
+     
+endmodule
+
+
+//Instruction Memory holds the instructions and are fetched by processor based on Program Counter
+//Each Instruction is stored as 4 8bit values = 32 bit
+
+module Instruction_Memory(reset,PC, Instruction);
+
+input reset;
+input [31:0] PC;
+output [31:0] Instruction ;
+
+reg [7:0] memory [31:0] ;
+
+  assign Instruction = {memory[PC+3],memory[PC+2],memory[PC+1],memory[PC]};
+
+    // Initialise memory when reset is one
+    always @(reset)
+    begin
+        if(reset == 1)
+        begin
+
+
+              //Setting 32-bit instruction: add t1, s0,s1 => 0x00940333 
+           memory[3] = 8'h01;
+           memory[2] = 8'h94;
+           memory[1] = 8'h03;
+           memory[0] = 8'h33;
+           // Setting 32-bit instruction: addi t2, s2, s3 => 0x413903b3
+           memory[7] = 8'h00;
+           memory[6] = 8'h39;
+           memory[5] = 8'h03;
+           memory[4] = 8'h93;
+                       // Setting 32-bit instruction: lw
+           memory[11] = 8'h00;
+           memory[10] = 8'h24;
+           memory[9] = 8'ha6;
+           memory[8] = 8'h03;
+//            // Setting 32-bit instruction: sub t2, s2, s3 => 0x413903b3
+//           memory[7] = 8'h41;
+//           memory[6] = 8'h39;
+//           memory[5] = 8'h03;
+//           memory[4] = 8'hb3;
+         // Setting 32-bit instruction: sw 
+           memory[15] = 8'h00;
+           memory[14] = 8'h36;
+           memory[13] = 8'ha2;
+           memory[12] = 8'h23;
+            // Setting 32-bit instruction: beq 
+           memory[19] = 8'h00;
+           memory[18] = 8'h32;
+           memory[17] = 8'h02;///****
+           memory[16] = 8'h67;
+// Setting 32-bit instruction: jal
+           memory[23] = 8'h00;
+           memory[22] = 8'h40;
+           memory[21] = 8'h00;
+           memory[20] = 8'hef;
+//            // Setting 32-bit instruction: xor t3, s6, s7 => 0x017b4e33
+//           memory[15] = 8'h01;
+//           memory[14] = 8'h7b;
+//           memory[13] = 8'h4e;
+//           memory[12] = 8'h33;
+   
+             // Setting 32-bit instruction: sll t4, s8, s9
+//           memory[19] = 8'h01;
+//           memory[18] = 8'h9c;
+//           memory[17] = 8'h1e;
+//           memory[16] = 8'hb3;
+           
+//            // Setting 32-bit instruction: srl t5, s10, s11
+//           memory[23] = 8'h01;
+//           memory[22] = 8'hbd;
+//           memory[21] = 8'h5f;
+//           memory[20] = 8'h33;
+            // Setting 32-bit instruction: and t6, a2, a3
+           memory[27] = 8'h00;
+           memory[26] = 8'hd6;
+           memory[25] = 8'h7f;
+           memory[24] = 8'hb3;
+//            // Setting 32-bit instruction: or a7, a4, a5
+//           memory[31] = 8'h00;
+//           memory[30] = 8'hf7;
+//           memory[29] = 8'h68;
+//           memory[28] = 8'hb3;
+             // Setting 32-bit instruction: lui x5 0x36
+           memory[31] = 8'h00;
+           memory[30] = 8'h00;
+           memory[29] = 8'h32;
+           memory[28] = 8'hb7;
+             
+           
+        end
+    end
+
+endmodule
+
+//Program Counter updates by 4 (in most of conditions) as each instruction is of 32 bit
+//In RISC-V we can access do byte access , half-word accesss (which I've not implemented here)
+
+
+module Program_Counter(clk, reset, PC, PCSrc, immext,isJump);
+
+input clk;
+input reset;
+input PCSrc;
+input [31:0]immext;
+input isJump;
+output reg[31:0] PC;
+
+
+always @(posedge clk)
+begin
+if(reset)
+PC<=0;
+else
+begin
+//for jump and link , branch instructions
+if(PCSrc == 1'b1 | isJump==1'b1 )
+ PC <= PC + immext;
+ else
+ PC <= PC+4;
+ end
+end
+
+endmodule
+
+
+//Register bank of 32bit 32 values
+module Registers(clk,write_data,rs1, rs2, rd, reg_write,reset, reg_readrs1, reg_read_rs2);
+
+input clk;
+input [31:0] write_data;
+input [4:0] rs1;
+input [4:0] rs2;
+input [4:0] rd;
+input reg_write;
+input reset;
+output reg[31:0] reg_readrs1;
+output reg[31:0] reg_read_rs2;
+
+reg [31:0] register_memory [31:0];
+
+
+//wire [7:0] opcode;
+
+//assign rs2 = Instruction[24:20];
+//assign rs1 = Instruction[19:15];
+//assign rd = Instruction[11:7];
+//assign opcode = Instruction[6:0];
+
+
+
+
+//always @(reset==1'b1)
+//    begin
+     
+//         register_memory[0] <= 32'h0;
+//         register_memory[1] <= 32'h1;
+//         register_memory[2] <= 32'h2;
+//         register_memory[3] <= 32'h3;
+//         register_memory[4] <= 32'h3;
+//         register_memory[5] <= 32'h5;
+//         register_memory[6] <= 32'h6;
+//         register_memory[7] <= 32'h7;
+//         register_memory[8] <= 32'h8;
+//         register_memory[9] <= 32'h9;
+//         register_memory[10] <= 32'h10;
+//         register_memory[11] <= 32'h11;
+//         register_memory[12] <= 32'h12;
+//         register_memory[13] <= 32'h13;
+//         register_memory[14] <= 32'h14;
+//         register_memory[15] <= 32'h15;
+//         register_memory[16] = 32'h16;
+//         register_memory[17] = 32'h17;
+//         register_memory[18] = 32'h18;
+//         register_memory[19] = 32'h19;
+//         register_memory[20] = 32'h20;
+//         register_memory[21] = 32'h21;
+//         register_memory[22] = 32'h22;
+//         register_memory[23] = 32'h23;
+//         register_memory[24] = 32'h24;
+//         register_memory[25] = 32'h25;
+//		 register_memory[26] = 32'h26;
+//         register_memory[27] = 32'h27;
+//         register_memory[28] = 32'h28;
+//         register_memory[29] = 32'h29;
+//         register_memory[30] = 32'h30;
+//         register_memory[31] = 32'h31;
+//         end
+  
+always @(*)
+	begin
+  reg_readrs1 <= register_memory[rs1] ;
+  reg_read_rs2 <= register_memory[rs2] ;
+ end
+
+//With reference to David Patterson, COA - RISC-V edition
+//data is written at the negative edge and read at positive edge
+    always @(negedge clk)
+  	begin
+  		if (reg_write == 1)
+		begin
+			 register_memory [rd] <= write_data;
+      		end
+  	end
+
+endmodule
+
+//unit is used for extend the immediate value for different intruction foramts
+
+
+module Extend(instr, imm_ext);
+
+input [31:0] instr;
+output reg[31:0] imm_ext;
+
+
+	always @(*)
+	begin
+		case(instr[6:0])
+		// I_type
+7'b0010011: imm_ext = {{20{instr[31]}}, instr[31:20]};
+//I_type ALU
+7'b0000011: imm_ext = {{20{instr[31]}}, instr[31:20]};
+		
+		// S_type (stores)
+7'b0100011: imm_ext = {{20{instr[31]}}, instr[31:25], instr[11:7]};
+		
+		// B_type (branches)
+7'b1100111: imm_ext = {{20{instr[31]}}, instr[7], instr[30:25], instr[11:8], 1'b0};
+		
+		// J_type (jal)
+7'b1101111: imm_ext = {{12{instr[31]}}, instr[19:12], instr[20], instr[30:21], 1'b0};
+		
+		// U_type
+7'b0110111: imm_ext = {instr[31:12], 12'b0};
+		
+		default: imm_ext = 32'bx; // undefined
+	endcase
+	
+	end
+	
+endmodule
+
+
+/*
+ALU module, which takes two operands of size 32-bits each and a 4-bit ALU_control as input.
+Operation is performed on the basis of ALU_control value and output is 32-bit ALU_result. 
+If the ALU_result is zero, a ZERO FLAG is set.
+*/
+
+/*
+ALU Control lines | Function
+-----------------------------
+        0000    Bitwise-AND
+        0001    Bitwise-OR
+        0010	Add (A+B)
+        0100	Subtract (A-B)
+        1000	Set on less than
+        0011    Shift left logical
+        0101    Shift right logical
+        0110    Multiply
+        0111    Bitwise-XOR
+*/
+
+module ALU (in1, in2, alu_control, alu_result, zero_flag);
+    input [31:0] in1,in2;
+    input[3:0] alu_control;
+    output reg [31:0] alu_result;
+    output reg zero_flag;
+
+    always @(*)
+    begin
+        
+        case(alu_control)
+
+        4'b0000: alu_result = in1&in2;
+        4'b0001: alu_result = in1|in2;
+        4'b0010: alu_result = in1+in2;
+        4'b0100: alu_result = in1-in2;
+        4'b1000: begin 
+            if(in1<in2)
+            alu_result = 1;
+            else
+            alu_result = 0;
+        end
+        4'b0011: alu_result = in1<<in2;
+        4'b0101: alu_result = in1>>in2;
+        4'b0110: alu_result = in1*in2;
+        4'b0111: alu_result = in1^in2;
+        4'b1001: alu_result = in1>>>in2;
+default: alu_result = 32'b0;
+        endcase
+
+        // Set the Zero_flag if ALU_result is zero
+        if (alu_result == 0)
+            zero_flag = 1'b1;
+        else
+            zero_flag = 1'b0;
+        
+    end
+endmodule
